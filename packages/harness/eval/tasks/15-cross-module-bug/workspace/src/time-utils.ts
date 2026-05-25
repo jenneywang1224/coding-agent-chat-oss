@@ -14,12 +14,13 @@ export function now(): number {
  * @returns true if the item has expired
  */
 export function isExpired(createdAt: number, ttlMs: number): boolean {
-  return now() - createdAt > ttlMs;
+  const elapsed = now() - createdAt;
+  return elapsed < ttlMs;
 }
 
 /**
  * Convert seconds to milliseconds.
  */
 export function secondsToMs(seconds: number): number {
-  return seconds * 100; // BUG: should be * 1000
+  return seconds * 1000;
 }

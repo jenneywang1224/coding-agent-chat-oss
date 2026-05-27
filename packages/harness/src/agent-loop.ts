@@ -30,6 +30,21 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+/** Why the agent loop returned to its caller. */
+export type AgentLoopStopReason = "completed" | "max_turns";
+
+export interface AgentLoopResult {
+  messages: ChatMessage[];
+  turnCount: number;
+  tokenUsage: TokenUsage;
+  /**
+   * Why the loop stopped. `completed` means the model produced an assistant
+   * message with no tool_calls (natural finish). `max_turns` means the loop
+   * exhausted its turn budget — partial work is still in `messages`.
+   */
+  stopReason: AgentLoopStopReason;
+}
+
 export interface AgentLoopOptions {
   config: LlmConfig;
   workspaceRoot: string;
@@ -110,7 +125,7 @@ export class AgentLoop {
     this.onMessagesChanged?.(this.messages);
   }
 
-  async run(userPrompt: string): Promise<{ messages: ChatMessage[]; turnCount: number; tokenUsage: TokenUsage }> {
+  async run(userPrompt: string): Promise<AgentLoopResult> {
     this.messages.push({ role: "user", content: userPrompt });
     this.notifyMessagesChanged();
 
@@ -132,15 +147,7 @@ export class AgentLoop {
         const finalText = assistantMessage.content || "";
         this.callbacks.onComplete?.(finalText);
         this.notifyMessagesChanged();
-        return {
-          messages: this.messages,
-          turnCount: this.turnCount,
-          tokenUsage: {
-            inputTokens: this.totalInputTokens,
-            outputTokens: this.totalOutputTokens,
-            totalTokens: this.totalInputTokens + this.totalOutputTokens,
-          },
-        };
+        return this.buildResult("completed");
       }
 
       // Execute all tool calls and add results
@@ -153,7 +160,23 @@ export class AgentLoop {
       this.callbacks.onTurnEnd?.(this.turnCount);
     }
 
-    throw new Error(`Agent exceeded max turns (${this.maxTurns})`);
+    // Max turns reached — return whatever the agent produced so far instead of
+    // throwing. Callers should treat this as a "budget exceeded" terminal state,
+    // not a hard error: the partial work (patches, file edits) is still useful.
+    return this.buildResult("max_turns");
+  }
+
+  private buildResult(stopReason: AgentLoopStopReason): AgentLoopResult {
+    return {
+      messages: this.messages,
+      turnCount: this.turnCount,
+      tokenUsage: {
+        inputTokens: this.totalInputTokens,
+        outputTokens: this.totalOutputTokens,
+        totalTokens: this.totalInputTokens + this.totalOutputTokens,
+      },
+      stopReason,
+    };
   }
 
   private async executeTurn(): Promise<ChatMessage> {
@@ -334,7 +357,11 @@ export class AgentLoop {
       return { role: "tool", content, tool_call_id: toolCall.id };
     }
 
-    const executionResult = await this.executor.execute(toolCall.function.name, args);
+    const executionResult = await this.executor.execute(
+      toolCall.function.name,
+      args,
+      this.signal,
+    );
 
     this.callbacks.onToolResult?.(
       toolCall.function.name,

@@ -57,7 +57,11 @@ export class ToolExecutor {
     this.shell = null;
   }
 
-  async execute(toolName: string, args: Record<string, unknown>): Promise<ToolExecutionResult> {
+  async execute(
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<ToolExecutionResult> {
     if (this.hooks?.preToolUse) {
       const pre = await this.hooks.preToolUse({
         toolName,
@@ -94,10 +98,10 @@ export class ToolExecutor {
           result = await this.editFile(args);
           break;
         case "bash":
-          result = await this.bash(args);
+          result = await this.bash(args, signal);
           break;
         case "run_command":
-          result = await this.bash(args);
+          result = await this.bash(args, signal);
           break;
         case "glob_search":
           result = await this.globSearch(args);
@@ -212,7 +216,10 @@ export class ToolExecutor {
     return { ok: true, output: `Successfully edited ${filePath}` };
   }
 
-  private async bash(args: Record<string, unknown>): Promise<ToolExecutionResult> {
+  private async bash(
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<ToolExecutionResult> {
     const command = String(args.command || "");
     const timeoutMs = typeof args.timeout_ms === "number" ? args.timeout_ms : 60_000;
 
@@ -221,12 +228,22 @@ export class ToolExecutor {
     }
 
     const shell = this.getShell();
-    const { exitCode, output } = await shell.execute(command, timeoutMs);
-
-    return {
-      ok: exitCode === 0,
-      output: this.truncate(output || "(no output)"),
-    };
+    try {
+      const { exitCode, output } = await shell.execute(command, timeoutMs, signal);
+      return {
+        ok: exitCode === 0,
+        output: this.truncate(output || "(no output)"),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Re-throw abort so the agent loop terminates correctly instead of
+      // surfacing it as a regular tool failure (which the model would try to
+      // recover from).
+      if (signal?.aborted || /\babort/i.test(message)) {
+        throw error;
+      }
+      return { ok: false, output: `Error executing bash: ${message}` };
+    }
   }
 
   private async globSearch(args: Record<string, unknown>): Promise<ToolExecutionResult> {

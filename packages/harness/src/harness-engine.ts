@@ -354,10 +354,14 @@ export class HarnessEngine implements AgentEngine {
 
       const durationMs = Date.now() - startTime;
       const finalMessage = result.messages[result.messages.length - 1];
-      const summary =
+      const stoppedAtMaxTurns = result.stopReason === "max_turns";
+      const baseSummary =
         finalMessage?.role === "assistant" && finalMessage.content
           ? finalMessage.content
           : "Agent task completed.";
+      const summary = stoppedAtMaxTurns
+        ? `[Stopped at max turns (${result.turnCount}) — partial work preserved]\n\n${baseSummary}`
+        : baseSummary;
 
       const deltaInputTokens = Math.max(0, totalInputTokens - runStartInputTokens);
       const deltaOutputTokens = Math.max(0, totalOutputTokens - runStartOutputTokens);
@@ -401,7 +405,7 @@ export class HarnessEngine implements AgentEngine {
         metrics,
         status: "completed",
         recoverable: false,
-        terminalReason: "completed",
+        terminalReason: stoppedAtMaxTurns ? "max_turns" : "completed",
       });
       await traceSink?.close();
     } catch (error) {

@@ -31,6 +31,7 @@ export interface AgentImageAttachment {
 
 export type AgentTerminalReason =
   | "completed"
+  | "max_turns"
   | "tool_failure_recoverable"
   | "cancelled"
   | "failed_terminal"
@@ -148,7 +149,7 @@ export interface AgentDonePayload {
   status?: Extract<AgentTaskStatus, "completed">;
   recoverable?: boolean;
   verification?: AgentVerification;
-  terminalReason?: Extract<AgentTerminalReason, "completed">;
+  terminalReason?: Extract<AgentTerminalReason, "completed" | "max_turns">;
 }
 
 export interface AgentErrorPayload {

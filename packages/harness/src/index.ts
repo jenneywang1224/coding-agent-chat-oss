@@ -1,8 +1,15 @@
 export { HarnessEngine, type HarnessEngineOptions } from "./harness-engine.js";
 export { LlmClient, LlmApiError } from "./api-client.js";
-export { AgentLoop, type AgentLoopCallbacks, type AgentLoopOptions, type TokenUsage } from "./agent-loop.js";
+export {
+  AgentLoop,
+  type AgentLoopCallbacks,
+  type AgentLoopOptions,
+  type AgentLoopResult,
+  type AgentLoopStopReason,
+  type TokenUsage,
+} from "./agent-loop.js";
 export { PlanExecutor, type Plan, type PlanStep, type PlanExecuteOptions, type PlanExecuteCallbacks } from "./plan-execute.js";
-export { ContextCompressor, estimateTokens } from "./context-compressor.js";
+export { ContextCompressor, estimateTokens, findSafeCutIndex } from "./context-compressor.js";
 export {
   PermissionGuard,
   DEFAULT_POLICY,

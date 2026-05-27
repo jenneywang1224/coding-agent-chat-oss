@@ -167,7 +167,7 @@ describe("AgentLoop - multiple tool calls in one turn", () => {
 });
 
 describe("AgentLoop - max turns exceeded", () => {
-  it("throws when exceeding max turns", async () => {
+  it("returns stopReason=max_turns with partial messages instead of throwing", async () => {
     // Always return a tool call so the loop never terminates
     mockTurnQueue = Array.from({ length: 5 }, () => ({
       toolCalls: [{ id: "call_x", name: "list_directory", arguments: "{}" }],
@@ -182,7 +182,11 @@ describe("AgentLoop - max turns exceeded", () => {
       callbacks,
     });
 
-    await expect(loop.run("infinite loop")).rejects.toThrow("max turns");
+    const result = await loop.run("infinite loop");
+    expect(result.stopReason).toBe("max_turns");
+    expect(result.turnCount).toBe(3);
+    // System + user + 3x (assistant + tool) = 8
+    expect(result.messages.length).toBeGreaterThanOrEqual(3);
   });
 });
 

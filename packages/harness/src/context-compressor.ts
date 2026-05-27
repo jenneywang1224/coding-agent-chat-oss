@@ -61,8 +61,11 @@ export class ContextCompressor {
     }
 
     const systemMessage = messages[0];
-    const recentMessages = messages.slice(-this.preserveRecentCount);
-    const middleMessages = messages.slice(1, -this.preserveRecentCount);
+    const proposedCut = Math.max(1, messages.length - this.preserveRecentCount);
+    const cutIdx = findSafeCutIndex(messages, proposedCut);
+
+    const recentMessages = messages.slice(cutIdx);
+    const middleMessages = messages.slice(1, cutIdx);
 
     if (middleMessages.length < 4) {
       // Not enough messages to compress meaningfully
@@ -125,4 +128,31 @@ export class ContextCompressor {
 
     return summary || "Previous conversation involved code exploration and modifications.";
   }
+}
+
+/**
+ * Pick a cut index such that `messages.slice(cutIdx)` is a valid conversation suffix.
+ *
+ * The DeepSeek/OpenAI chat completions API requires every `role: "tool"` message
+ * to be immediately preceded (within the request) by an `assistant` message whose
+ * `tool_calls` array references the same `tool_call_id`. A naive
+ * `slice(-preserveRecentCount)` will frequently start in the middle of an
+ * `assistant(tool_calls) → tool → tool` block and produce a request that the API
+ * rejects with HTTP 422.
+ *
+ * Strategy: walk backward from the proposed cut, expanding the recent window
+ * until we land on a non-`tool` message. Because every `tool` message is
+ * preceded (eventually) by its `assistant(tool_calls)`, walking back from a
+ * `tool` will always land on either the matching `assistant` (good — keeps the
+ * pair intact) or earlier — at worst we keep more than `preserveRecentCount`
+ * messages, never fewer.
+ *
+ * Floor at index 1 to always preserve the system message at index 0.
+ */
+export function findSafeCutIndex(messages: ChatMessage[], proposedCut: number): number {
+  let cut = Math.max(1, Math.min(proposedCut, messages.length));
+  while (cut > 1 && messages[cut]?.role === "tool") {
+    cut--;
+  }
+  return cut;
 }

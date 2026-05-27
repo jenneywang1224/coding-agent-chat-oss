@@ -119,13 +119,16 @@ for i in $(seq 0 $((TOTAL - 1))); do
 
   ELAPSED=$(($(date +%s) - START))
   PATCH_LINES=0
-  PATCH=""
+  # Always materialize agent.patch (even when empty) so `jq --rawfile` succeeds.
+  # CRITICAL: must NOT pipe through `$(cat ...)` — bash command substitution
+  # strips trailing newlines, which breaks `git apply` (it requires a final \n).
+  # That single character difference makes every SWE-bench instance fail to apply.
+  touch "$WORK/agent.patch"
   if [ -s "$WORK/agent.patch" ]; then
     PATCH_LINES=$(wc -l < "$WORK/agent.patch")
-    PATCH=$(cat "$WORK/agent.patch")
   fi
 
-  jq -nc --arg id "$INST_ID" --arg model "$MODEL_NAME" --arg p "$PATCH" \
+  jq -nc --arg id "$INST_ID" --arg model "$MODEL_NAME" --rawfile p "$WORK/agent.patch" \
     '{instance_id:$id, model_name_or_path:$model, model_patch:$p}' >> "$PRED_FILE"
 
   printf '%s\t%s\t%d\t%d\n' "$INST_ID" "$STATUS" "$PATCH_LINES" "$ELAPSED" >> "$SUMMARY"

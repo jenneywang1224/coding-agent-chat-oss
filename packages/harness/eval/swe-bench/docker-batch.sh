@@ -147,3 +147,13 @@ echo "predictions: $PRED_FILE ($(wc -l < "$PRED_FILE") lines)"
 echo ""
 echo "summary:"
 column -t -s $'\t' "$SUMMARY"
+
+# Auto-generate per-instance cost/time report. Lives next to summary.tsv so
+# it gets picked up by the same rsync that pulls logs back to the Mac.
+# Tolerates python missing — report is nice-to-have, not blocking.
+REPORT_SCRIPT="$(dirname "$(readlink -f "$0")")/cost-report.py"
+if [ -f "$REPORT_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
+  echo ""
+  echo "=== cost report ==="
+  python3 "$REPORT_SCRIPT" "$OUT_DIR" || echo "(cost-report failed — non-fatal)"
+fi

@@ -31,7 +31,16 @@ flowchart LR
 | 开代理（让 ECS 能访问 GitHub） | Mac | `pproxy :7890` + `ssh -R 7890:127.0.0.1:7890` |
 | **评分** | **ECS** | `python -m swebench.harness.run_evaluation --max_workers 4` |
 | 调试单题 | ECS Docker | `docker-smoke.sh <id>`（流式 stdout） |
-| 看 trace | Mac | rsync 回 `logs/<id>/agent.log` |
+| 拉日志+生成成本报告 | Mac | `pull-and-report.sh <run-id>` → 生成 `cost-report.{tsv,md}` |
+| 看 trace | Mac | `~/.forgelet/runs/swe-bench/<run-id>/logs/<id>/agent.log`（pull-and-report 已 rsync） |
+
+### 轨迹日志位置
+
+- **运行时（ECS）**：`~/swe-batch/<run-id>/logs/<id>/agent.log`（docker 容器内 stdout/stderr 落到这里）
+- **同步后（Mac）**：`~/.forgelet/runs/swe-bench/<run-id>/logs/<id>/agent.log`（由 `pull-and-report.sh` rsync 回来）
+- 每题三件套：`agent.log`（轨迹）、`agent.patch`（diff）、`prompt.txt`（题目）
+
+`docker-batch.sh` 结束时会自动调一次 `cost-report.py`，在 `<run-id>/cost-report.tsv` 和 `cost-report.md` 写入每题的 instance_id / cost / turns / 耗时 / 评测结果 / 日志路径。Mac 侧再跑一次 `pull-and-report.sh` 既同步日志又重算一份（评测完成后 eval-report.json 会加入评测列）。
 
 > **为什么 agent 必须在 docker 里**：SWE-bench 题目的 fix 几乎都需要跑 pytest 验证。Mac 本地 worktree 没有 python 依赖 + 测试套件配置，agent 只能盲改，基线分会 < 10%。在 instance image 里 agent 能直接 `conda activate testbed && pytest`。
 >
@@ -140,7 +149,30 @@ KEEP_IMAGES=20 PER_INSTANCE_TIMEOUT=900 MODEL_NAME=forgelet-docker-v2 \
 | `PER_INSTANCE_TIMEOUT` | 600s | 单题超时（含 LLM 思考 + 工具调用） |
 | `MODEL_NAME` | `forgelet-docker` | 写入 predictions.jsonl 的 `model_name_or_path` |
 
-### 1.4 起 pproxy + ssh 反向隧道（评测前必做）
+> `docker-batch.sh` 跑完会自动在 `~/swe-batch/<run-id>/` 写 `cost-report.tsv` + `cost-report.md`（per-instance 成本、turns、耗时、agent.log 路径）。此时还没评测结果，所以 `eval_status` 列为空；评测完成后再跑一次 1.4 即可补齐。
+
+### 1.4 拉日志 + 成本报告回 Mac
+
+```bash
+# 任何时候都能跑（batch 跑完之后，或者评测完之后再跑一次拿 eval_status）：
+./packages/harness/eval/swe-bench/pull-and-report.sh lite-50
+# 或自定义 ECS / 路径：
+ECS_HOST=ubuntu@<ip> ECS_BATCH_ROOT='~/swe-batch' ./pull-and-report.sh lite-50
+```
+
+产物（落在 `~/.forgelet/runs/swe-bench/<run-id>/`）：
+
+| 文件 | 内容 |
+|------|------|
+| `cost-report.tsv` | `instance_id\tbatch_status\teval_status\tcost_usd\tturns\tllm_s\twall_s\tpatch_lines\tagent_log` 一行一题 |
+| `cost-report.md` | Markdown 汇总：totals + eval breakdown + per-instance 表 |
+| `logs/<id>/agent.log` | 完整轨迹（rsync 自 ECS 的 `~/swe-batch/<run-id>/logs/<id>/agent.log`） |
+| `logs/<id>/agent.patch` | agent 生成的 diff |
+| `summary.tsv` / `predictions.jsonl` / `eval-report.json` | docker-batch + 官方 eval 原始输出 |
+
+> ⚠️ **成本数字的真伪**：cost 来自 agent.log footer，由 `apps/cli/src/terminal.ts` 用 `cacheReadInputTokens` 算出。如果 ECS 的 `dist/` 比 `src/` 旧（没有 cache tracking），成本会被高估 ~4×（DeepSeek V4 Pro cache 命中率通常 80%+，cache-hit 价 $0.003625/M vs cache-miss $0.435/M，差 120×）。Sync 代码后**务必 rebuild**：`pnpm --filter @forgelet/harness build`。
+
+### 1.5 起 pproxy + ssh 反向隧道（评测前必做）
 
 ECS 跑官方 harness 时每题要从 GitHub 拉 `requirements.txt`，但 ECS 公网 HTTPS 出口被防火墙挡。Mac 起 pproxy 让 ECS 走 Mac 出口：
 
@@ -159,7 +191,7 @@ ssh ubuntu@$ECS_IP 'curl -s -o /dev/null -w "HTTP %{http_code}\n" --proxy http:/
 
 > ⚠️ Mac 进入睡眠 / pproxy 被 kill / ssh 隧道断 → eval 必卡。整套 eval 期间 Mac 必须保持在线。
 
-### 1.5 ECS 上跑官方评测
+### 1.6 ECS 上跑官方评测
 
 ```bash
 RUN_ID=lite-50-eval-v1  # 自己命名，区分不同 agent 版本
@@ -188,7 +220,7 @@ ssh ubuntu@$ECS_IP "rm -rf ~/logs/run_evaluation/$RUN_ID; \
 
 预估总耗时：每题 pytest **~5-10 min**，46 题（50 题中扣 4 空 patch） / 4 并行 ≈ **30-60 min**。首次 image 拉取（如果没缓存）每题 +2-5 min。
 
-### 1.6 监控进度
+### 1.7 监控进度
 
 ```bash
 # 一行看全：进度条 + 当前 4 个并行容器 + 已完成数
@@ -203,7 +235,9 @@ ssh ubuntu@$ECS_IP 'tail -f ~/swe-batch/lite-50-eval-v1.log'
 ssh ubuntu@$ECS_IP 'ps -p $(pgrep -f swebench.harness.run_evaluation | head -1) -o etime=,stat= 2>/dev/null || echo "(no eval running)"'
 ```
 
-### 1.7 拉报告回 Mac + 看分
+### 1.8 拉评测报告回 Mac + 看分
+
+> 拿到 `eval-report.json` 后回到 §1.4 再跑一次 `pull-and-report.sh`，`cost-report.tsv` 的 `eval_status` 列就会自动补齐 resolved/unresolved/empty/error。
 
 ```bash
 RUN_ID=lite-50-eval-v1

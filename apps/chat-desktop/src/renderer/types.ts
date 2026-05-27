@@ -174,6 +174,8 @@ export interface DesktopConfig {
     runMode?: "run" | "resume";
   }) => Promise<{ sessionId?: string }>;
   resumeRun: DesktopConfig["startRun"];
+  /** Abort the currently-running agent for this window. No-op when idle. */
+  cancelRun: () => Promise<{ ok: boolean }>;
   respondPermission: (
     requestId: string,
     outcome: "allow_once" | "allow_always" | "deny",

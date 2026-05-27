@@ -21,6 +21,7 @@ import {
 import {
   startAgentRun,
   handleRespondPermission,
+  disconnectActiveAgent,
   type StartAgentRunInput,
 } from "../services/agent-runner.js";
 
@@ -47,6 +48,10 @@ export function registerChatIpc(): void {
   ipcMain.handle("chat-desktop:resume-run", (event, input: StartAgentRunInput | undefined) =>
     startAgentRun(event, { ...input, runMode: "resume" }),
   );
+  ipcMain.handle("chat-desktop:cancel-run", (event) => {
+    disconnectActiveAgent(event.sender.id);
+    return { ok: true };
+  });
   ipcMain.handle(
     "chat-desktop:respond-permission",
     (_event, requestId: unknown, outcome: unknown) => {

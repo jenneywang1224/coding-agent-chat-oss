@@ -40,4 +40,9 @@ contextBridge.exposeInMainWorld("desktopConfig", {
   debugPing: () => ipcRenderer.invoke("chat-desktop:debug-ping"),
   getSettings: () => ipcRenderer.invoke("chat-desktop:get-settings"),
   updateSettings: (settings) => ipcRenderer.invoke("chat-desktop:update-settings", settings),
+  listTraces: (workspacePath) =>
+    ipcRenderer.invoke("chat-desktop:list-traces", workspacePath ?? ""),
+  listAllTraces: () => ipcRenderer.invoke("chat-desktop:list-traces", ""),
+  loadTrace: (workspacePath, sessionId) =>
+    ipcRenderer.invoke("chat-desktop:load-trace", workspacePath, sessionId),
 });

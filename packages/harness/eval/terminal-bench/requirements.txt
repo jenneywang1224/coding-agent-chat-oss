@@ -1,0 +1,3 @@
+# Harbor (Terminal-Bench official harness). Install on ECS with Python 3.12 or 3.13 only.
+# Python 3.14 is NOT supported (litellm caps at <3.14).
+harbor @ git+https://github.com/harbor-framework/harbor.git

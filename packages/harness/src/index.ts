@@ -84,6 +84,19 @@ export {
   applyEdit,
   type TodoItem,
 } from "./tools/index.js";
+
+export {
+  selectPatch,
+  normalizeSourceChange,
+  extractChangeLines,
+  type PatchCandidate,
+  type RegressionStatus,
+  type CandidateAnnotation,
+  type ClusterInfo,
+  type SelectionResult,
+  type SelectOptions,
+} from "./best-of-n/index.js";
+
 export {
   buildSystemPrompt,
   detectWorkspaceContext,
@@ -92,4 +105,5 @@ export {
   type PromptContext,
 } from "./prompt.js";
 export { resolveDefaultBashTimeoutMs } from "./tools/executor.js";
+
 export type * from "./types.js";

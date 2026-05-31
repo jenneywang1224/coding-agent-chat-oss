@@ -3,6 +3,8 @@
  * Assembles prompt sections based on workspace context, task type, and configuration.
  */
 
+import { readFileSync } from "node:fs";
+
 export interface PromptContext {
   workspaceRoot: string;
   /** Detected languages/frameworks in the workspace */
@@ -12,7 +14,62 @@ export interface PromptContext {
   /** Custom instructions from user or project config */
   customInstructions?: string;
   /** Task category hint */
-  taskHint?: "debug" | "implement" | "refactor" | "explain" | "general";
+  taskHint?: "debug" | "implement" | "refactor" | "explain" | "terminal" | "general";
+}
+
+/** Read optional prompt extras from process env (used by Terminal-Bench eval). */
+export function readPromptExtrasFromEnv(): {
+  customInstructions?: string;
+  taskHint?: PromptContext["taskHint"];
+} {
+  const out: { customInstructions?: string; taskHint?: PromptContext["taskHint"] } = {};
+
+  const extra = process.env.FORGELET_SYSTEM_PROMPT_EXTRA?.trim();
+  if (extra) {
+    out.customInstructions = extra;
+  }
+
+  const extraFile = process.env.FORGELET_PROMPT_EXTRA_FILE?.trim();
+  if (extraFile) {
+    try {
+      const fromFile = readFileSync(extraFile, "utf8").trim();
+      if (fromFile) {
+        out.customInstructions = out.customInstructions
+          ? `${out.customInstructions}\n\n${fromFile}`
+          : fromFile;
+      }
+    } catch {
+      // Missing file is non-fatal; caller may set FORGELET_SYSTEM_PROMPT_EXTRA instead.
+    }
+  }
+
+  const hint = process.env.FORGELET_TASK_HINT?.trim().toLowerCase();
+  if (
+    hint === "debug" ||
+    hint === "implement" ||
+    hint === "refactor" ||
+    hint === "explain" ||
+    hint === "terminal" ||
+    hint === "general"
+  ) {
+    out.taskHint = hint;
+  }
+
+  return out;
+}
+
+/** Merge env-driven prompt extras into a PromptContext (env wins on taskHint). */
+export function mergePromptContextFromEnv(ctx: PromptContext): PromptContext {
+  const extras = readPromptExtrasFromEnv();
+  return {
+    ...ctx,
+    taskHint: extras.taskHint ?? ctx.taskHint,
+    customInstructions: extras.customInstructions
+      ? ctx.customInstructions
+        ? `${ctx.customInstructions}\n\n${extras.customInstructions}`
+        : extras.customInstructions
+      : ctx.customInstructions,
+  };
 }
 
 export function buildSystemPrompt(contextOrRoot: string | PromptContext): string {
@@ -108,6 +165,16 @@ function buildWorkflowSection(ctx: PromptContext): string {
 3. Make changes incrementally, preserving the public interface
 4. Run existing tests to verify nothing broke
 5. Report the refactoring done`;
+
+    case "terminal":
+      return `## Workflow (Terminal / CLI Tasks)
+
+1. Read the task instruction carefully; note required outputs, paths, and formats.
+2. Explore the environment with list_directory, read_file, and bash (pwd, ls, find) before changing anything.
+3. Use bash for system tools (git, curl, awk/sed/jq, package managers, compilers). Pass timeout_ms for long commands (builds, installs).
+4. Create or edit files with write_file / edit_file when scripts or configs are needed.
+5. Verify the result matches the spec (run the command or test mentioned in the task, or inspect output files).
+6. Stop when the task is complete — do not run unrelated exploration.`;
 
     default:
       return `## Workflow

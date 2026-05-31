@@ -29,6 +29,18 @@ export interface ToolExecutorOptions {
   permissionGuard?: PermissionGuard;
   hooks?: HarnessHooks;
   sessionId?: string;
+  /** Default bash timeout when the model omits timeout_ms (default 60s). */
+  defaultBashTimeoutMs?: number;
+}
+
+const DEFAULT_BASH_TIMEOUT_MS = 60_000;
+
+/** Resolve default bash timeout from env FORGELET_BASH_TIMEOUT_MS (milliseconds). */
+export function resolveDefaultBashTimeoutMs(): number {
+  const raw = process.env.FORGELET_BASH_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_BASH_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BASH_TIMEOUT_MS;
 }
 
 export class ToolExecutor {
@@ -43,9 +55,11 @@ export class ToolExecutor {
    * inspecting the executor with `getTodos()`.
    */
   private todos: TodoItem[] = [];
+  private readonly defaultBashTimeoutMs: number;
 
   constructor(options: ToolExecutorOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
+    this.defaultBashTimeoutMs = options.defaultBashTimeoutMs ?? resolveDefaultBashTimeoutMs();
     this.guard =
       options.permissionGuard ??
       new PermissionGuard(options.permissionPolicy, options.onPermissionConfirm);
@@ -389,7 +403,8 @@ export class ToolExecutor {
     signal?: AbortSignal,
   ): Promise<ToolExecutionResult> {
     const command = String(args.command || "");
-    const timeoutMs = typeof args.timeout_ms === "number" ? args.timeout_ms : 60_000;
+    const timeoutMs =
+      typeof args.timeout_ms === "number" ? args.timeout_ms : this.defaultBashTimeoutMs;
 
     if (!command) {
       return { ok: false, output: "command is required" };

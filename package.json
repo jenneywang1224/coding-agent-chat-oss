@@ -20,7 +20,14 @@
     "eval:swe:verify": "pnpm --filter @forgelet/harness eval:swe:verify",
     "eval:swe:setup": "pnpm --filter @forgelet/harness eval:swe:setup",
     "eval:swe:traces": "pnpm --filter @forgelet/harness eval:swe:traces",
-    "eval:swe:analyze": "pnpm --filter @forgelet/harness eval:swe:analyze"
+    "eval:swe:analyze": "pnpm --filter @forgelet/harness eval:swe:analyze",
+    "eval:tb:bundle": "pnpm --filter @forgelet/harness eval:tb:bundle",
+    "eval:tb:setup": "pnpm --filter @forgelet/harness eval:tb:setup",
+    "eval:tb:prepare": "pnpm --filter @forgelet/harness eval:tb:prepare",
+    "eval:tb:sync": "pnpm --filter @forgelet/harness eval:tb:sync",
+    "eval:tb:pull": "pnpm --filter @forgelet/harness eval:tb:pull",
+    "eval:tb:smoke": "pnpm --filter @forgelet/harness eval:tb:smoke",
+    "eval:tb": "pnpm --filter @forgelet/harness eval:tb"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

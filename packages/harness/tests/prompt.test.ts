@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSystemPrompt } from "../src/prompt.js";
+import { buildSystemPrompt, mergePromptContextFromEnv } from "../src/prompt.js";
 
 describe("buildSystemPrompt", () => {
   it("includes workspace root from string shorthand", () => {
@@ -27,6 +27,15 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("TypeScript");
   });
 
+  it("adds terminal workflow when taskHint is terminal", () => {
+    const prompt = buildSystemPrompt({
+      workspaceRoot: "/tmp/ws",
+      taskHint: "terminal",
+    });
+    expect(prompt).toContain("Workflow (Terminal / CLI Tasks)");
+    expect(prompt).toContain("timeout_ms");
+  });
+
   it("includes custom instructions section", () => {
     const prompt = buildSystemPrompt({
       workspaceRoot: "/tmp/ws",
@@ -34,5 +43,18 @@ describe("buildSystemPrompt", () => {
     });
     expect(prompt).toContain("Project-Specific Instructions");
     expect(prompt).toContain("Always run tests after edits.");
+  });
+
+  it("merges prompt extras from env", () => {
+    const prev = process.env.FORGELET_SYSTEM_PROMPT_EXTRA;
+    process.env.FORGELET_SYSTEM_PROMPT_EXTRA = "Prefer jq for JSON.";
+    try {
+      const merged = mergePromptContextFromEnv({ workspaceRoot: "/tmp/ws" });
+      const prompt = buildSystemPrompt(merged);
+      expect(prompt).toContain("Prefer jq for JSON.");
+    } finally {
+      if (prev === undefined) delete process.env.FORGELET_SYSTEM_PROMPT_EXTRA;
+      else process.env.FORGELET_SYSTEM_PROMPT_EXTRA = prev;
+    }
   });
 });
